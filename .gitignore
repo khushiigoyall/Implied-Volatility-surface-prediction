@@ -1,0 +1,8 @@
+__pycache__/
+*.csv
+!dataset.csv
+!submission.csv
+sandbox*.py
+test_*.py
+check_min.py
+count_missing.py
