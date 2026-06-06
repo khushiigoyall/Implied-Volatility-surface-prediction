@@ -61,8 +61,8 @@ def fill_missing_iv(df: pd.DataFrame) -> pd.DataFrame:
                     pred = float(f_pe(log_m))
                     df_filled.iloc[ix, df_filled.columns.get_loc(c)] = np.clip(pred, 0.0001, 10.0)
                     
-    # Forward/Backward fill across time handles rows with 0 or 1 valid points perfectly!
-    df_filled[option_cols] = df_filled[option_cols].bfill().ffill()
+    # Forward fill across time handles rows with 0 or 1 valid points perfectly!
+    df_filled[option_cols] = df_filled[option_cols].ffill()
     
     return df_filled
 
@@ -106,16 +106,15 @@ To interpolate missing points, this algorithm relies strictly on cross-sectional
 3. **Linear Extrapolation**: For deep out-of-the-money (OTM) or deep in-the-money (ITM) options that lie beyond the bounds of the actively traded strikes, we extrapolate linearly based on the asymptotic slope of the outermost known options. This closely mimics the natural flattening out of real-world volatility smiles, preventing exponential explosion in the far wings.
 4. **Arbitrage-Free Boundary Safety**: All model predictions are mathematically bounded strictly between $0.0001$ and $10.0$. This ensures financial validity without arbitrarily truncating extreme, yet theoretically possible, market regimes (e.g., flash crashes).
 
-### 3. Graceful Time-Series Fallback (`ffill` and `bfill`)
+### 3. Graceful Time-Series Fallback (`ffill`)
 In extreme liquidity edge-cases (e.g., severe market halts, extreme volatility events, or out-of-hours thin trading), an entire cross-section (a specific timestamp) may suffer from a complete lack of valid option quotes. In these zero-liquidity states, cross-sectional interpolation is mathematically impossible.
 
 To resolve this, the model gracefully falls back to **Time-Series Autocorrelation**. Implied Volatility is a highly persistent, mean-reverting process over short intraday timeframes. Therefore, the most accurate, arbitrage-free prior for an option's unobservable IV is its IV from the nearest adjacent microsecond. 
 
 We implement this utilizing Pandas' highly efficient Time-Series propagation:
-* **Forward Fill (`ffill()`)**: Propagates the last known valid observation forward in time. This assumes the volatility state has not changed since the last traded tick.
-* **Backward Fill (`bfill()`)**: For missing data occurring at the very beginning of the dataset (where no historical prior exists), we propagate the first observable future state backward.
+* **Forward Fill (`ffill()`)**: Propagates the last known valid observation forward in time. This assumes the volatility state has not changed since the last traded tick, ensuring strict adherence to the zero look-ahead bias requirement.
 
-By combining the structural robustness of Log-Moneyness interpolation with the persistence of `ffill()` and `bfill()`, this algorithm achieves a fully dense, arbitrage-free Volatility Surface.
+By combining the structural robustness of Log-Moneyness interpolation with the persistence of `ffill()`, this algorithm achieves a fully dense, arbitrage-free Volatility Surface without violating causality.
 
 ### 4. Code Implementation
 The following code reconstructs the base Implied Volatility Surface and formats the output for the final evaluation.
@@ -180,7 +179,7 @@ for ix in range(len(df_filled)):
                 df_filled.iloc[ix, df_filled.columns.get_loc(c)] = np.clip(pred, 0.0001, 10.0)
 
 # Graceful fallback for extreme missing rows using pure time-series autocorrelation
-df_filled[option_cols] = df_filled[option_cols].bfill().ffill()
+df_filled[option_cols] = df_filled[option_cols].ffill()
 
 df_filled.to_csv("filled_dataset.csv", index=False)
 print("Filled dataset mathematically reconstructed and saved.")
