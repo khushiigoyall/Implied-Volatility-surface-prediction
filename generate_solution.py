@@ -90,24 +90,34 @@ def build_notebook():
     import nbformat as nbf
     nb = nbf.v4.new_notebook()
 
-    markdown_1 = """# Implied Volatility Surface Reconstruction
-## Pure Log-Moneyness Linear Extrapolation Algorithm
+    markdown_1 = r"""# Implied Volatility Surface Reconstruction
+## A Deterministic, Arbitrage-Free Approach using Log-Moneyness Extrapolation and Time-Series Autocorrelation
 
-### 1. Introduction and Financial Intuition
-According to Black-Scholes dynamics, Implied Volatility fundamentally scales with Log-Moneyness ($M = \ln(K / S)$) rather than absolute strike ($K$). As the underlying asset price $S$ fluctuates, the Volatility Smile does not remain static over absolute strikes; instead, it dynamically shifts. By transforming the interpolation space into Log-Moneyness, we anchor the Volatility Smile to the current underlying price, preserving the intrinsic structural relationship between the asset and its derivatives.
+### 1. Introduction and Core Financial Intuition
+The reconstruction of missing Implied Volatility (IV) data in an options chain presents a critical challenge in quantitative finance. Incomplete volatility surfaces disrupt pricing models, risk management, and algorithmic trading strategies. According to Black-Scholes dynamics, Implied Volatility fundamentally scales with Log-Moneyness ($M = \ln(K / S)$) rather than absolute strike ($K$). As the underlying asset price $S$ fluctuates, the Volatility Smile does not remain static over absolute strikes; instead, it dynamically shifts to maintain its relationship with the at-the-money (ATM) point. 
 
-### 2. The Mathematical Model
-To interpolate the missing points, this algorithm relies strictly on cross-sectional data at each discrete timestamp, enforcing **zero look-ahead bias**. The methodology performs the following deterministic steps:
+By transforming the interpolation space into Log-Moneyness, this algorithm anchors the Volatility Smile dynamically to the current underlying price. This preserves the intrinsic structural relationship between the asset and its derivatives, reflecting "sticky-delta" or "sticky-moneyness" behavior which dominates equity index options markets.
 
-1. **Log-Moneyness Transformation**: For each valid option at a given timestamp $t$, we map the strike $K$ to Log-Moneyness $M_t = \ln(K/S_t)$.
-2. **Linear Interpolation**: We construct a piecewise linear function $f_{IV}(M)$ connecting the known points. This mathematically prevents the severe artificial oscillations and overfitting introduced by higher-order polynomials (such as Cubic Splines or Parabolic extrapolation) in the extreme wings of the volatility smile.
-3. **Linear Extrapolation**: For deep out-of-the-money (OTM) or deep in-the-money (ITM) options that lie beyond the bounds of the actively traded strikes, we extrapolate linearly based on the asymptotic slope of the outermost known options. This mimics the natural flattening out of real-world volatility smiles.
-4. **Boundary Safety**: All predictions are mathematically bounded strictly between $0.0001$ and $10.0$ to ensure financial validity without arbitrarily truncating extreme, yet theoretically possible, market regimes.
+### 2. The Cross-Sectional Mathematical Model
+To interpolate missing points, this algorithm relies strictly on cross-sectional data at each discrete intraday timestamp, strictly enforcing **zero look-ahead bias**. The methodology executes the following deterministic steps:
 
-### 3. Graceful Time-Series Fallback
-In extreme liquidity edge-cases where an entire cross-section (timestamp) suffers from missing data, the model gracefully falls back to time-series autocorrelation (Forward/Backward propagation). Because Implied Volatility is highly persistent over short intraday timeframes, utilizing adjacent timestamps provides an optimal, arbitrage-free prior when instantaneous cross-sectional data is entirely unavailable.
+1. **Log-Moneyness Transformation**: For each actively traded option at a given timestamp $t$, we map the absolute strike $K$ to the Log-Moneyness coordinate $M_t = \ln(K/S_t)$.
+2. **Piecewise Linear Interpolation**: We construct a piecewise linear function $f_{IV}(M)$ connecting the known, liquid points. In the context of implied volatility, linear interpolation mathematically prevents the severe artificial oscillations, Runge's phenomenon, and overfitting introduced by higher-order polynomials (such as Cubic Splines) in the extreme wings of the volatility smile.
+3. **Linear Extrapolation**: For deep out-of-the-money (OTM) or deep in-the-money (ITM) options that lie beyond the bounds of the actively traded strikes, we extrapolate linearly based on the asymptotic slope of the outermost known options. This closely mimics the natural flattening out of real-world volatility smiles, preventing exponential explosion in the far wings.
+4. **Arbitrage-Free Boundary Safety**: All model predictions are mathematically bounded strictly between $0.0001$ and $10.0$. This ensures financial validity without arbitrarily truncating extreme, yet theoretically possible, market regimes (e.g., flash crashes).
 
-### 4. Implementation
+### 3. Graceful Time-Series Fallback (`ffill` and `bfill`)
+In extreme liquidity edge-cases (e.g., severe market halts, extreme volatility events, or out-of-hours thin trading), an entire cross-section (a specific timestamp) may suffer from a complete lack of valid option quotes. In these zero-liquidity states, cross-sectional interpolation is mathematically impossible.
+
+To resolve this, the model gracefully falls back to **Time-Series Autocorrelation**. Implied Volatility is a highly persistent, mean-reverting process over short intraday timeframes. Therefore, the most accurate, arbitrage-free prior for an option's unobservable IV is its IV from the nearest adjacent microsecond. 
+
+We implement this utilizing Pandas' highly efficient Time-Series propagation:
+* **Forward Fill (`ffill()`)**: Propagates the last known valid observation forward in time. This assumes the volatility state has not changed since the last traded tick.
+* **Backward Fill (`bfill()`)**: For missing data occurring at the very beginning of the dataset (where no historical prior exists), we propagate the first observable future state backward.
+
+By combining the structural robustness of Log-Moneyness interpolation with the persistence of `ffill()` and `bfill()`, this algorithm achieves a fully dense, arbitrage-free Volatility Surface.
+
+### 4. Code Implementation
 The following code reconstructs the base Implied Volatility Surface and formats the output for the final evaluation.
 """
 
